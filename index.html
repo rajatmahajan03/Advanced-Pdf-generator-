@@ -42,13 +42,14 @@
   .input-textarea{width:100%;height:320px;padding:16px;border:2px solid #e2e8f0;border-radius:15px;font-family:'Georgia',serif;font-size:15px;line-height:1.6;resize:vertical;background:#fff}
   .format-btn{width:100%;padding:18px;background:linear-gradient(135deg,#667eea 0%,#764ba2 50%,#f093fb 100%);color:#fff;border:none;border-radius:15px;font-size:1.2em;font-weight:700;cursor:pointer;box-shadow:0 8px 25px rgba(102,126,234,.3)}
   .output-textarea{width:100%;height:380px;padding:20px;border:2px solid #d1d5db;border-radius:15px;font-family:'Times New Roman',serif;font-size:12px;line-height:1.4;background:#f9fafb;resize:vertical;margin-bottom:20px}
-  .action-buttons{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;margin-bottom:25px}
-  .copy-btn,.download-btn,.pdf-btn{padding:14px;border:none;border-radius:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;color:#fff}
+  .action-buttons{display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:25px}
+  .copy-btn,.download-btn,.doc-btn,.pdf-btn{padding:14px;border:none;border-radius:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;color:#fff}
   .copy-btn{background:linear-gradient(135deg,#10b981,#059669)}
   .download-btn{background:linear-gradient(135deg,#3b82f6,#1d4ed8)}
+  .doc-btn{background:linear-gradient(135deg,#7c3aed,#5b21b6)}
   .pdf-btn{background:linear-gradient(135deg,#dc2626,#991b1b)}
   .stats-panel{background:#fff;border-radius:15px;padding:20px;box-shadow:0 8px 25px rgba(0,0,0,.1);margin-top:18px}
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:15px}
   .stat-card{text-align:center;padding:15px;background:linear-gradient(135deg,#f8fafc,#e2e8f0);border-radius:10px;border:1px solid #cbd5e0}
   .stat-value{font-size:1.8em;font-weight:800;color:#667eea;display:block}
   .preview-panel{background:#fff;border-radius:15px;padding:25px;box-shadow:0 8px 25px rgba(0,0,0,.1);border:2px solid #e5e7eb}
@@ -169,6 +170,22 @@
               <label for="autoStripHashes">Strip pasted # headings</label>
             </div>
           </div>
+
+          <div class="settings-grid" style="margin-bottom:0;">
+            <div class="form-group">
+              <label>Reference Style</label>
+              <select id="referenceStyle">
+                <option value="none" selected>None</option>
+                <option value="apa">APA</option>
+                <option value="mla">MLA</option>
+                <option value="ieee">IEEE</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Due Date (optional)</label>
+              <input id="dueDate" type="date"/>
+            </div>
+          </div>
         </div>
 
         <!-- Toolbar -->
@@ -194,6 +211,7 @@
             <div class="stat-card"><span class="stat-value" id="pageCount">0</span><span>Pages</span></div>
             <div class="stat-card"><span class="stat-value" id="paragraphCount">0</span><span>Paragraphs</span></div>
             <div class="stat-card"><span class="stat-value" id="questionCount">0</span><span>Questions</span></div>
+            <div class="stat-card"><span class="stat-value" id="readTime">0m</span><span>Read Time</span></div>
           </div>
         </div>
       </div>
@@ -207,6 +225,7 @@
         <div class="action-buttons">
           <button class="copy-btn" onclick="copyToClipboard()">📋 Copy Text</button>
           <button class="download-btn" onclick="downloadText()">💾 Download TXT</button>
+          <button class="doc-btn" onclick="downloadDoc()">📝 Download DOC</button>
           <button class="pdf-btn" onclick="generatePDF()">📄 Generate PDF</button>
         </div>
 
@@ -232,7 +251,7 @@
 const { jsPDF } = window.jspdf;
 
 /* -------------------- Persistence -------------------- */
-const persistKeys = ["docType","fontFamily","fontSize","wordsPerPage","lineSpacing","margins","addPageNumbers","addHeaders","autoStripHashes","docTitle","authorName","inputText"];
+const persistKeys = ["docType","fontFamily","fontSize","wordsPerPage","lineSpacing","margins","addPageNumbers","addHeaders","autoStripHashes","docTitle","authorName","referenceStyle","dueDate","inputText"];
 window.addEventListener("load", () => {
   persistKeys.forEach(k=>{
     const el = document.getElementById(k);
@@ -325,14 +344,36 @@ function updateStats(){
   const wordsPerPage = parseInt(document.getElementById('wordsPerPage').value||"400",10);
   const pages = Math.max(1, Math.ceil(words/wordsPerPage));
   const questions = (text.match(/\bq\d+/gi)||[]).length;
+  const paragraphs = text.split(/\n\s*\n/).filter(p=>p.trim()).length;
+  const readTime = Math.max(1, Math.ceil(words/220));
   document.getElementById('wordCount').textContent = words;
   document.getElementById('pageCount').textContent = pages;
+  document.getElementById('paragraphCount').textContent = paragraphs;
   document.getElementById('questionCount').textContent = questions;
+  document.getElementById('readTime').textContent = `${readTime}m`;
 }
 
 /* -------------------- Formatter -------------------- */
 function toTitleCase(str){return str.replace(/\w\S*/g, t=>t[0].toUpperCase()+t.substr(1).toLowerCase());}
 function capitalizeFirstLetter(str){return str? str[0].toUpperCase()+str.slice(1) : str;}
+function formatDueDate(v){
+  if(!v) return '';
+  const d=new Date(v+'T00:00:00');
+  if(Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'});
+}
+function buildReferencePlaceholder(style){
+  const map={
+    apa:['References','Smith, J. (2023). Sample source title. Journal of Writing, 12(3), 24-31.'],
+    mla:['Works Cited','Smith, John. "Sample Source Title." Journal of Writing, vol. 12, no. 3, 2023, pp. 24-31.'],
+    ieee:['References','[1] J. Smith, "Sample source title," Journal of Writing, vol. 12, no. 3, pp. 24-31, 2023.']
+  };
+  if(!map[style]) return '';
+  const [head,entry]=map[style];
+  return `
+## ${head}
+${entry}`;
+}
 
 function formatAcademicText(){
   const raw = document.getElementById('inputText').value.trim();
@@ -341,6 +382,8 @@ function formatAcademicText(){
   const cleaned = cleanText(raw);
   const wordsPerPage = parseInt(document.getElementById('wordsPerPage').value||"400",10);
   const addHeaders = document.getElementById('addHeaders').checked;
+  const refStyle = document.getElementById('referenceStyle').value;
+  const dueDate = formatDueDate(document.getElementById('dueDate').value);
 
   let formattedText = '';
   let currentPage=1, wordsOnPage=0;
@@ -409,12 +452,13 @@ function formatAcademicText(){
   let headerBlock = '';
   if(title){
     if(type==='resume'){
-      headerBlock += `# ${title}\n`; if(author) headerBlock += `_${author}_\n\n`;
+      headerBlock += `# ${title}\n`; if(author) headerBlock += `_${author}_\n`; if(dueDate) headerBlock += `Due: ${dueDate}\n`; headerBlock += `\n`;
     }else{
-      headerBlock += `# ${title}\n`; if(author) headerBlock += `_${author}_\n\n`;
+      headerBlock += `# ${title}\n`; if(author) headerBlock += `_${author}_\n`; if(dueDate) headerBlock += `Due: ${dueDate}\n`; headerBlock += `\n`;
     }
   }
-  document.getElementById('outputText').value = (headerBlock + formattedText).trim();
+  const referencesBlock = buildReferencePlaceholder(refStyle);
+  document.getElementById('outputText').value = (headerBlock + formattedText + referencesBlock).trim();
 
   // update paragraph count
   const paragraphs = formattedText.split('\n\n').filter(p=>p.trim().length>0);
@@ -483,6 +527,15 @@ function downloadText(){
   const blob=new Blob([txt],{type:'text/plain'}); const url=URL.createObjectURL(blob); const a=document.createElement('a');
   a.href=url;a.download='formatted_document.txt';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
   const b=document.querySelector('.download-btn'); const t=b.innerHTML; b.innerHTML='✅ Downloaded'; setTimeout(()=>b.innerHTML=t,2000);
+}
+function downloadDoc(){
+  const txt=document.getElementById('outputText').value; if(!txt){alert('No formatted text to export!');return;}
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Formatted document</title></head><body><pre style="font-family:Times New Roman,serif;white-space:pre-wrap;">${escapeHTML(txt)}</pre></body></html>`;
+  const blob=new Blob([html],{type:'application/msword'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='formatted_document.doc';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  const b=document.querySelector('.doc-btn'); const t=b.innerHTML; b.innerHTML='✅ DOC Ready'; setTimeout(()=>b.innerHTML=t,2000);
 }
 
 /* -------------------- Unicode normalization for PDF -------------------- */
